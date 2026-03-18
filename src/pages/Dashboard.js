@@ -307,16 +307,28 @@ window.Dashboard = function ({ profile, accounts, income, goals, setGoals, strat
                     if (!f) return;
                     setRestoreErr('');
                     // Read the file immediately while the user-gesture permission is still active.
-                    // This avoids the "permission lost after reference acquired" error that occurs
-                    // when restore logic defers reading a stored FileSystemFileHandle across sessions.
+                    // Uses FileReader fallback for iOS Safari compatibility — f.text() is not
+                    // supported on iOS Safari 14 and below and throws silently on mobile.
                     try {
-                      const text = await f.text();
+                      let text;
+                      if (typeof f.text === 'function') {
+                        // Modern browsers (desktop Chrome, Firefox, Safari 15+)
+                        text = await f.text();
+                      } else {
+                        // iOS Safari fallback — wrap FileReader in a Promise
+                        text = await new Promise((resolve, reject) => {
+                          const reader = new FileReader();
+                          reader.onload = ev => resolve(ev.target.result);
+                          reader.onerror = () => reject(new Error('FileReader failed'));
+                          reader.readAsText(f);
+                        });
+                      }
                       let data;
                       try { data = JSON.parse(text); }
                       catch { setRestoreErr('Could not restore: the file appears to be corrupted or is not a valid Cornerstone backup.'); return; }
                       restoreFromParsed(data, () => window.location.reload(), msg => setRestoreErr(msg));
                     } catch (err) {
-                      setRestoreErr('Could not restore: unable to read the file. Please try selecting it again.');
+                      setRestoreErr('Could not restore: unable to read the file on this device. Please try again or use a desktop browser.');
                     }
                   }
                 }),

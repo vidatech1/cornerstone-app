@@ -1,4 +1,4 @@
-const CACHE = 'cornerstone-0.12.1';
+const CACHE = 'cornerstone-0.12.5';
 const ASSETS = [
   '/', '/index.html',
   '/src/app.js',

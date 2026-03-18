@@ -2,7 +2,7 @@
 const { useState, useEffect, useCallback, useContext } = React;
 
 // App version (alpha stage)
-window.APP_VERSION = '0.11';
+window.APP_VERSION = '0.12.5';
 
 // Default seed data for first-time users who skip onboarding
 const DEFAULT_STRATEGIES = [
