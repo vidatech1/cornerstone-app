@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <meta name="theme-color" content="#d4943a"/>
+  <title>Cornerstone</title>
+  <link rel="manifest" href="/manifest.json"/>
+  <link rel="icon" type="image/svg+xml" href="/icon.svg"/>
+  <link rel="apple-touch-icon" href="/icon.svg"/>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body, #root { height: 100%; }
+    body {
+      font-family: 'Inter', sans-serif;
+      -webkit-font-smoothing: antialiased;
+      background: #080d14;
+      color: #f0e8dc;
+      overflow-x: hidden;
+    }
+    button { cursor: pointer; font-family: inherit; }
+    input, select, textarea { font-family: inherit; }
+
+    /* Scrollbar */
+    ::-webkit-scrollbar { width: 5px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: rgba(212,148,58,0.3); border-radius: 3px; }
+
+    /* Animations */
+    @keyframes fadeUp   { from { opacity:0; transform:translateY(12px); } to { opacity:1; transform:translateY(0); } }
+    @keyframes fadeIn   { from { opacity:0; } to { opacity:1; } }
+    @keyframes scaleIn  { from { opacity:0; transform:scale(0.95); } to { opacity:1; transform:scale(1); } }
+    @keyframes pulse    { 0%,100%{opacity:1;}50%{opacity:.45;} }
+    @keyframes shimmer  { 0%{background-position:-400px 0;}100%{background-position:400px 0;} }
+    @keyframes spin     { to { transform: rotate(360deg); } }
+    @keyframes progress { 0%{width:5%;} 50%{width:75%;} 100%{width:95%;} }
+
+    .fade-up   { animation: fadeUp  0.3s ease both; }
+    .fade-in   { animation: fadeIn  0.25s ease both; }
+    .scale-in  { animation: scaleIn 0.25s ease both; }
+    .spin      { animation: spin 1s linear infinite; }
+
+    /* Modal */
+    .modal-overlay {
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,0.72);
+      display: flex; align-items: center; justify-content: center;
+      z-index: 400; padding: 16px;
+      animation: fadeIn 0.2s ease;
+    }
+
+    /* Loading skeleton */
+    .skeleton {
+      background: linear-gradient(90deg, #121c2b 25%, #1a2a3d 50%, #121c2b 75%);
+      background-size: 400px 100%;
+      animation: shimmer 1.4s infinite;
+      border-radius: 8px;
+    }
+
+    /* Install banner */
+    #install-banner {
+      display: none;
+      position: fixed; bottom: 80px; left: 50%; transform: translateX(-50%);
+      background: #121c2b; border: 1px solid rgba(212,148,58,0.25); border-radius: 14px;
+      padding: 12px 20px; color: #f0e8dc; font-size: 13px; font-weight: 600;
+      z-index: 500; box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+      align-items: center; gap: 12px; cursor: pointer;
+      white-space: nowrap;
+    }
+    #install-banner.show { display: flex; animation: fadeUp 0.3s ease; }
+
+    /* Print */
+    @media print { .no-print { display: none !important; } }
+  </style>
+</head>
+<body>
+  <div id="root">
+    <!-- Splash while JS loads -->
+    <div style="min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#080d14;gap:16px;">
+      <svg viewBox="0 0 48 48" width="64" height="64" fill="none">
+        <rect x="8" y="24" width="16" height="16" rx="3" fill="#d4943a" opacity="0.9"/>
+        <rect x="24" y="24" width="16" height="16" rx="3" fill="#8a6830" opacity="0.6"/>
+        <rect x="16" y="8" width="16" height="16" rx="3" fill="#5a6a7a" opacity="0.4"/>
+      </svg>
+      <div style="font-family:'Playfair Display',serif;font-size:28px;font-weight:600;color:#f0e8dc;letter-spacing:1px;">Cornerstone</div>
+      <div style="font-size:13px;color:#5a6a7a;font-family:'Inter',sans-serif;">Loading your financial vault…</div>
+    </div>
+  </div>
+
+  <!-- PWA Install Banner -->
+  <div id="install-banner">
+    ◆ Install Cornerstone for offline access
+    <button id="install-btn" style="background:#d4943a;border:none;border-radius:8px;color:#080d14;padding:6px 14px;font-weight:600;font-size:12px;cursor:pointer;">Install</button>
+    <button id="install-dismiss" style="background:none;border:none;color:rgba(240,232,220,0.5);font-size:18px;cursor:pointer;">×</button>
+  </div>
+
+  <!-- React via CDN (ESM-compatible) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+
+  <!-- Load app modules in dependency order -->
+  <script type="text/babel" data-type="module" src="/src/theme.js"></script>
+  <script type="text/babel" data-type="module" src="/src/db.js"></script>
+  <script type="text/babel" data-type="module" src="/src/utils.js"></script>
+  <script type="text/babel" data-type="module" src="/src/utils/wealthEngine.js"></script>
+  <script type="text/babel" data-type="module" src="/src/utils/export.js"></script>
+  <script type="text/babel" data-type="module" src="/src/utils/prices.js"></script>
+  <script type="text/babel" data-type="module" src="/src/components/Card.js"></script>
+  <script type="text/babel" data-type="module" src="/src/components/PieChart.js"></script>
+  <script type="text/babel" data-type="module" src="/src/components/WealthGauge.js"></script>
+  <script type="text/babel" data-type="module" src="/src/components/PinLock.js"></script>
+  <script type="text/babel" data-type="module" src="/src/components/Chatbot.js"></script>
+  <script type="text/babel" data-type="module" src="/src/components/GoalCard.js"></script>
+  <script type="text/babel" data-type="module" src="/src/components/AccountModal.js"></script>
+  <script type="text/babel" data-type="module" src="/src/components/Nav.js"></script>
+  <script type="text/babel" data-type="module" src="/src/pages/Onboarding.js"></script>
+  <script type="text/babel" data-type="module" src="/src/pages/Dashboard.js"></script>
+  <script type="text/babel" data-type="module" src="/src/pages/Accounts.js"></script>
+  <script type="text/babel" data-type="module" src="/src/pages/Projections.js"></script>
+  <script type="text/babel" data-type="module" src="/src/pages/Recommendations.js"></script>
+  <script type="text/babel" data-type="module" src="/src/pages/LifeScore.js"></script>
+  <script type="text/babel" data-type="module" src="/src/pages/WeeklyReport.js"></script>
+  <script type="text/babel" data-type="module" src="/src/pages/Settings.js"></script>
+  <script type="text/babel" data-type="module" src="/src/pages/Lifestyle.js"></script>
+  <script type="text/babel" data-type="module" src="/src/pages/Support.js"></script>
+  <script type="text/babel" data-type="module" src="/src/pages/Admin.js"></script>
+  <script type="text/babel" data-type="module" src="/src/app.js"></script>
+
+  <script>
+    // Register Service Worker
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/sw.js').catch(() => {});
+      });
+    }
+
+    // PWA Install prompt
+    let deferredPrompt;
+    window.addEventListener('beforeinstallprompt', e => {
+      e.preventDefault();
+      deferredPrompt = e;
+      const banner = document.getElementById('install-banner');
+      if (!localStorage.getItem('ws_install_dismissed')) banner.classList.add('show');
+    });
+    document.getElementById('install-btn').addEventListener('click', () => {
+      if (deferredPrompt) { deferredPrompt.prompt(); deferredPrompt = null; }
+      document.getElementById('install-banner').classList.remove('show');
+    });
+    document.getElementById('install-dismiss').addEventListener('click', () => {
+      document.getElementById('install-banner').classList.remove('show');
+      localStorage.setItem('ws_install_dismissed', '1');
+    });
+  </script>
+</body>
+</html>
