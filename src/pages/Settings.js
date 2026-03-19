@@ -376,6 +376,51 @@ window.SettingsPage = function ({ profile, onUpdateProfile, onOpenAdmin }) {
       ),
     ),
 
+    // Security Settings
+    React.createElement(Section, { title: '🛡️ Security' },
+      React.createElement('div', { style: { fontFamily: "'Inter', sans-serif", fontSize: F.xs, color: T.textSub, lineHeight: 1.65, marginBottom: 16 } },
+        'Manage your PIN, Phantom wallet connection, and authenticator app. All security features work offline.'
+      ),
+
+      // Current security level
+      React.createElement('div', { style: { display: 'flex', gap: 4, marginBottom: 16 } },
+        ['PIN', 'Wallet', '2FA'].map((label, i) => {
+          const active = i === 0
+            ? !!localStorage.getItem('ws_pin')
+            : i === 1 ? (window.WalletAuth?.isWalletEnabled?.() || false)
+            : (window.TOTPEngine?.isEnabled?.() || false);
+          return React.createElement('div', { key: label, style: { flex: 1, textAlign: 'center' } },
+            React.createElement('div', { style: { height: 4, borderRadius: 2, background: active ? (i === 0 ? T.accent : T.positive) : T.border, marginBottom: 4, transition: 'background 0.3s' } }),
+            React.createElement('div', { style: { fontFamily: "'Inter', sans-serif", fontSize: 9, color: active ? T.textSub : T.textMuted } }, label),
+          );
+        }),
+      ),
+
+      // PIN change / upgrade
+      React.createElement('button', {
+        onClick: () => {
+          if (window.showToast) showToast('To change your PIN, lock the app and use the PIN screen.', 'info', 3000);
+        },
+        style: { width: '100%', padding: '12px 14px', background: T.surfaceAlt, border: `1px solid ${T.border}`, borderRadius: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', marginBottom: 10 },
+      },
+        React.createElement('div', { style: { textAlign: 'left' } },
+          React.createElement('div', { style: { fontFamily: "'Inter', sans-serif", fontSize: F.sm, color: T.text, fontWeight: 500 } }, 'PIN Lock'),
+          React.createElement('div', { style: { fontFamily: "'Inter', sans-serif", fontSize: F.xs, color: T.textMuted, marginTop: 2 } },
+            localStorage.getItem('ws_pin')
+              ? `Active — ${localStorage.getItem('ws_pin').length}-digit PIN`
+              : 'Not set'
+          ),
+        ),
+        React.createElement('span', { style: { fontFamily: "'Inter', sans-serif", fontSize: F.xs, color: T.textMuted } }, '→'),
+      ),
+
+      // SecuritySetup component handles Phantom + TOTP inline
+      React.createElement(SecuritySetup, { T, F, isSettings: true,
+        onComplete: () => {},
+        onSkip: () => {},
+      }),
+    ),
+
     // Save Button
     React.createElement('div', { style: { marginTop: 24 } },
       React.createElement(Btn, {

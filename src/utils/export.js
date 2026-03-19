@@ -82,28 +82,45 @@ ${strategies?.length ? `<h2>Active Strategies</h2><ul>${strategies.map(s => `<li
 };
 
 window.createBackup = async function (folderHandle, pin) {
-  const data     = await DB.exportAll();
-  const payload  = { _type: 'wealthscore_backup', _version: '2.0', _date: new Date().toISOString(), ...data };
+  const data    = await DB.exportAll();
+  const payload = { _type: 'wealthscore_backup', _version: '2.0', _date: new Date().toISOString(), ...data };
   const d = new Date();
   const dateStamp = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 
-  let json, filename, encrypted = false;
+  let json, filename, encrypted = false, encMethod = 'none';
 
-  if (pin && window.CornerstoneEncryption) {
+  // ── Priority 1: Wallet encryption (strongest) ─────────────────────────
+  if (window.WalletAuth?.isWalletEnabled?.() && window.WalletAuth?.isPhantomAvailable?.()) {
+    try {
+      const envelope = await WalletAuth.encryptWithWallet(payload);
+      json      = JSON.stringify(envelope, null, 2);
+      filename  = `${dateStamp}-cornerstone-wallet.json`;
+      encrypted = true;
+      encMethod = 'wallet';
+    } catch (err) {
+      console.warn('[Backup] Wallet encryption failed, falling back to PIN:', err.message);
+      // Fall through to PIN encryption
+    }
+  }
+
+  // ── Priority 2: PIN encryption ────────────────────────────────────────
+  if (!encrypted && pin && window.CornerstoneEncryption) {
     try {
       const envelope = await CornerstoneEncryption.encrypt(payload, pin);
       json      = JSON.stringify(envelope, null, 2);
       filename  = `${dateStamp}-cornerstone-secure.json`;
       encrypted = true;
+      encMethod = 'pin';
     } catch (err) {
-      // S03: encryption failed — warn user explicitly, do NOT silently downgrade
-      console.error('[Backup] Encryption failed:', err.message);
-      showToast('⚠️ Encryption failed — backup saved without encryption. Set your PIN in Settings.', 'warning', 5000);
+      console.warn('[Backup] PIN encryption failed:', err.message);
+      showToast('⚠️ Encryption failed — backup saved without encryption. Check your PIN in Settings.', 'warning', 5000);
       json     = JSON.stringify(payload, null, 2);
       filename = `${dateStamp}-cornerstone.json`;
     }
-  } else {
-    // S03: no PIN set — inform user backup is unencrypted
+  }
+
+  // ── Priority 3: Unencrypted fallback ──────────────────────────────────
+  if (!encrypted && !json) {
     if (window.CornerstoneEncryption) {
       showToast('💡 Backup saved unencrypted. Set a PIN in Settings to secure future backups.', 'warning', 4000);
     }
@@ -113,15 +130,84 @@ window.createBackup = async function (folderHandle, pin) {
 
   if (folderHandle) {
     await saveToFolder(folderHandle, filename, json);
-    return { method: 'folder', folderName: folderHandle.name, filename, encrypted };
+    return { method: 'folder', folderName: folderHandle.name, filename, encrypted, encMethod };
   } else {
     const blob = new Blob([json], { type: 'application/json' });
     const url  = URL.createObjectURL(blob);
     const a    = document.createElement('a');
     a.href = url; a.download = filename; a.click();
     URL.revokeObjectURL(url);
-    return { method: 'download', filename, encrypted };
+    return { method: 'download', filename, encrypted, encMethod };
   }
+};
+
+// ── Backup scheduling ─────────────────────────────────────────────────────
+
+// Returns ms between backups for a given frequency string
+window.backupFrequencyMs = function (freq) {
+  const DAY = 86400000;
+  if (freq === 'launch')  return 0;
+  if (freq === 'daily')   return DAY;
+  if (freq === 'weekly')  return DAY * 7;
+  if (freq === 'monthly') return DAY * 30;
+  return null;
+};
+
+// Check whether a scheduled backup is due
+window.isBackupDue = async function () {
+  const freq = await DB.getSetting('backupFrequency') || 'weekly';
+  if (freq === 'manual') return false;
+  const ms = backupFrequencyMs(freq);
+  if (ms === null) return false;
+  const last = await DB.getSetting('lastBackupAt');
+  if (!last) return true;
+  return (Date.now() - new Date(last).getTime()) >= ms;
+};
+
+window.recordBackup = async function () {
+  const now = new Date().toISOString();
+  await DB.setSetting('lastBackupAt', now);
+  return now;
+};
+
+window.lastBackupLabel = function (isoString) {
+  if (!isoString) return 'Never backed up';
+  const diff = Date.now() - new Date(isoString).getTime();
+  const days  = Math.floor(diff / 86400000);
+  const hours = Math.floor(diff / 3600000);
+  const mins  = Math.floor(diff / 60000);
+  if (mins < 2)   return 'Just now';
+  if (mins < 60)  return `${mins} min ago`;
+  if (hours < 24) return `${hours}h ago`;
+  if (days === 1) return 'Yesterday';
+  if (days < 7)   return `${days} days ago`;
+  if (days < 30)  return `${Math.floor(days / 7)}w ago`;
+  return `${Math.floor(days / 30)}mo ago`;
+};
+
+window.backupUrgency = function (isoString, freq) {
+  if (freq === 'manual') return 'ok';
+  if (!isoString) return 'critical';
+  const days = (Date.now() - new Date(isoString).getTime()) / 86400000;
+  if (days > 30) return 'critical';
+  if (days > 14) return 'warning';
+  return 'ok';
+};
+
+window.runBackup = async function (silent = false) {
+  const handle = await getBackupFolder();
+  const pin    = CornerstoneEncryption.getStoredPin();
+  const result = await createBackup(handle, pin);
+  const ts     = await recordBackup();
+  const folderName = (handle && handle.name) || (await DB.getSetting('backupFolderName')) || 'Downloads';
+  const encLabel = result.encMethod === 'wallet' ? ' 🔒 Wallet-encrypted'
+                 : result.encMethod === 'pin'    ? ' 🔒 Encrypted'
+                 : '';
+  const msg = result.method === 'folder'
+    ? `Backed up to ${folderName}${encLabel}`
+    : `Backup saved${encLabel} — move to iCloud or Google Drive for safety`;
+  showToast(msg, 'success', 3200);
+  return ts;
 };
 
 // ── Backup scheduling ─────────────────────────────────────────────────────
@@ -263,7 +349,7 @@ window.restoreFromFile = async function (file, onSuccess, onError) {
 // Receiving a plain JS object instead of a file handle eliminates the
 // "permission lost after reference acquired" error on restore.
 window.restoreFromParsed = async function(data, onSuccess, onError, onNeedPin, _depth = 0) {
-  // S04: recursion depth guard — prevent unbounded recursion on malformed files
+  // S04: recursion depth guard
   if (_depth > 1) {
     return onError('Could not restore: backup format is invalid (nested encryption detected).');
   }
@@ -273,18 +359,32 @@ window.restoreFromParsed = async function(data, onSuccess, onError, onNeedPin, _
       return onError('Could not restore: the backup file is empty or invalid.');
     }
 
-    // ── Encrypted backup path ─────────────────────────────────────────────
+    // ── Wallet-encrypted backup path ──────────────────────────────────────
+    if (window.WalletAuth?.isWalletEncrypted?.(data)) {
+      try {
+        const decrypted = await WalletAuth.decryptWithWallet(data);
+        return restoreFromParsed(decrypted, onSuccess, onError, onNeedPin, _depth + 1);
+      } catch (err) {
+        if (err.message === 'WRONG_WALLET') {
+          return onError(
+            `This backup was encrypted with a different Phantom wallet${data._pubkey ? ` (${data._pubkey.slice(0,6)}…${data._pubkey.slice(-4)})` : ''}. Connect the correct wallet to restore it.`
+          );
+        }
+        if (err.message.includes('cancelled')) return onError('Restore cancelled. Approve the Phantom signing request to decrypt your backup.');
+        return onError('Could not decrypt wallet backup: ' + err.message);
+      }
+    }
+
+    // ── PIN-encrypted backup path ─────────────────────────────────────────
     if (CornerstoneEncryption.isEncrypted(data)) {
       const storedPin = CornerstoneEncryption.getStoredPin();
 
       const attemptDecrypt = async (pin, onPinError) => {
         try {
           const decrypted = await CornerstoneEncryption.decrypt(data, pin);
-          // S04: pass _depth + 1 to prevent infinite recursion
           return restoreFromParsed(decrypted, onSuccess, onError, onNeedPin, _depth + 1);
         } catch (err) {
           if (err.message === 'WRONG_PIN') {
-            // R02: surface error to the caller without closing the modal
             onPinError('Incorrect PIN — please try again.');
           } else {
             onError('Could not decrypt backup: ' + err.message);
@@ -298,19 +398,13 @@ window.restoreFromParsed = async function(data, onSuccess, onError, onNeedPin, _
           return restoreFromParsed(decrypted, onSuccess, onError, onNeedPin, _depth + 1);
         } catch (err) {
           if (err.message === 'WRONG_PIN') {
-            // Stored PIN doesn't match — ask user to enter PIN manually
-            // R02: onNeedPin receives attemptDecrypt so the modal can retry inline
-            if (typeof onNeedPin === 'function') {
-              return onNeedPin(attemptDecrypt);
-            }
+            if (typeof onNeedPin === 'function') return onNeedPin(attemptDecrypt);
             return onError('Incorrect PIN. This backup was secured with a different PIN.');
           }
           return onError('Could not decrypt backup: ' + err.message);
         }
       } else {
-        if (typeof onNeedPin === 'function') {
-          return onNeedPin(attemptDecrypt);
-        }
+        if (typeof onNeedPin === 'function') return onNeedPin(attemptDecrypt);
         return onError('This backup is encrypted. Set up your PIN in Settings to restore it.');
       }
     }

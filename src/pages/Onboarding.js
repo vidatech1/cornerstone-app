@@ -17,8 +17,8 @@ window.Onboarding = function ({ onComplete }) {
   const [restoreError, setRestoreError] = useState('');
   const fileInputRef = useRef(null);
 
-  // 0 Welcome · 1 About You · 2 Income · 3 Accounts · 4 Backup · 5 PIN · 6 Done
-  const STEPS  = ['Welcome', 'About You', 'Income', 'Accounts', 'Backup', 'Security', 'All Set!'];
+  // 0 Welcome · 1 About You · 2 Income · 3 Accounts · 4 Backup · 5 PIN · 6 Security · 7 Done
+  const STEPS  = ['Welcome', 'About You', 'Income', 'Accounts', 'Backup', 'Security', 'Advanced Security', 'All Set!'];
   const pct    = Math.round((step / (STEPS.length - 1)) * 100);
   const setP   = (k, v) => setProfile(p => ({ ...p, [k]: v }));
   const iStyle = inputStyle(T, F);
@@ -531,8 +531,15 @@ window.Onboarding = function ({ onComplete }) {
         onSkip:     () => setStep(6),
       }),
 
-      // ── 6: All Set! ──────────────────────────────────────────────────────
-      step === 6 && React.createElement('div', { style: { textAlign: 'center' } },
+      // ── 6: Advanced Security (Phantom + TOTP) ────────────────────────────
+      step === 6 && React.createElement(SecuritySetup, {
+        T, F,
+        onComplete: () => setStep(7),
+        onSkip:     () => setStep(7),
+      }),
+
+      // ── 7: All Set! ──────────────────────────────────────────────────────
+      step === 7 && React.createElement('div', { style: { textAlign: 'center' } },
         React.createElement('div', { style: { fontSize: 64, marginBottom: 16 } }, '✦'),
         React.createElement('h2', { style: { fontFamily: "'Playfair Display', serif", fontWeight: 600, fontSize: F.xl, color: T.accent, marginBottom: 10 } },
           `You're all set${profile.name ? `, ${profile.name}` : ''}!`
@@ -544,9 +551,11 @@ window.Onboarding = function ({ onComplete }) {
           ...[
             [accounts.length > 0, `◆ ${accounts.length} account${accounts.length !== 1 ? 's' : ''} added`],
             [!!folderHandle,       `◆ Auto-backup → ${folderHandle?.name}`],
-            [!folderHandle,        '◆ Backup → Downloads (change anytime)'],
+            [!folderHandle,        '◆ Backup → Downloads (change anytime in Settings)'],
             [backupFreq !== 'manual', `◆ ${{ launch:'Every open', daily:'Daily', weekly:'Weekly', monthly:'Monthly' }[backupFreq]} backup scheduled`],
-            [true,                 '◆ Your data stays on your device — always private'],
+            [window.WalletAuth?.isWalletEnabled?.(), '◆ Phantom wallet encryption active 👻'],
+            [window.TOTPEngine?.isEnabled?.(), '◆ Authenticator app (2FA) active 🔑'],
+            [true, '◆ Your data stays on your device — always private'],
           ].filter(([show]) => show).map(([, label], i) =>
             React.createElement('div', { key: i, style: { display: 'flex', alignItems: 'center', gap: 10, background: T.accentGlow, border: `1px solid ${T.border}`, borderRadius: 10, padding: '11px 16px' } },
               React.createElement('span', { style: { fontFamily: "'Inter', sans-serif", fontSize: F.sm, color: T.text } }, label)

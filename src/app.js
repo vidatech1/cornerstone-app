@@ -2,7 +2,7 @@
 const { useState, useEffect, useCallback, useContext } = React;
 
 // App version (alpha stage)
-window.APP_VERSION = '0.12.5';
+window.APP_VERSION = '0.15';
 
 // Default seed data for first-time users who skip onboarding
 const DEFAULT_STRATEGIES = [
@@ -37,6 +37,18 @@ function App() {
 
   const isOnline = useOnlineStatus();
   const hasPin   = !!localStorage.getItem('ws_pin');
+
+  // PIN migration: show banner once to users with existing short PINs
+  const [showPinMigration,  setShowPinMigration]  = useState(false);
+  const [showPinMigrateSetup, setShowPinMigrateSetup] = useState(false);
+
+  useEffect(() => {
+    const pin = localStorage.getItem('ws_pin') || '';
+    const dismissed = localStorage.getItem('cs_pin_migration_dismissed');
+    if (pin && pin.length < 6 && !dismissed) {
+      setShowPinMigration(true);
+    }
+  }, []);
 
   // Theme persistence
   useEffect(() => { localStorage.setItem('ws_theme', themeMode); }, [themeMode]);
@@ -193,6 +205,33 @@ function App() {
       // Offline banner
       !isOnline && React.createElement('div', { style: { background: 'rgba(212,148,58,0.12)', border: '1px solid rgba(212,148,58,0.3)', padding: '8px 16px', textAlign: 'center', fontFamily: "'Inter', sans-serif", fontWeight: 500, fontSize: F.xs, color: T.accent } },
         '📵 You\'re offline — all core features work without internet. Live prices paused.'
+      ),
+
+      // PIN migration banner (shown once to users with short PINs)
+      showPinMigration && !showPinMigrateSetup && React.createElement(PinMigrationBanner, {
+        T, F,
+        onUpgrade: () => { setShowPinMigration(false); setShowPinMigrateSetup(true); },
+        onDismiss: () => { setShowPinMigration(false); localStorage.setItem('cs_pin_migration_dismissed', '1'); },
+      }),
+
+      // PIN migration setup modal
+      showPinMigrateSetup && React.createElement('div', {
+        style: { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 500, padding: 20 },
+      },
+        React.createElement('div', { style: { background: T.surface, border: `1px solid ${T.border}`, borderRadius: 22, padding: 28, width: '100%', maxWidth: 400 } },
+          React.createElement(PinSetup, {
+            isMigration: true,
+            onComplete: (withPin) => {
+              setShowPinMigrateSetup(false);
+              localStorage.setItem('cs_pin_migration_dismissed', '1');
+              if (withPin && window.showToast) showToast('✅ PIN upgraded to 6 digits', 'success');
+            },
+            onSkip: () => {
+              setShowPinMigrateSetup(false);
+              localStorage.setItem('cs_pin_migration_dismissed', '1');
+            },
+          }),
+        ),
       ),
 
       React.createElement(Nav, { page, setPage, themeMode, setTheme, fontSize, setFontSize, isOnline, onLock: lock, hasPin, pricesLoading }),

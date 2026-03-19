@@ -1,4 +1,4 @@
-const CACHE = 'cornerstone-0.12.5';
+const CACHE = 'cornerstone-0.15';
 const ASSETS = [
   '/', '/index.html',
   '/src/app.js',
@@ -9,6 +9,8 @@ const ASSETS = [
   '/src/components/Card.js',
   '/src/components/PieChart.js',
   '/src/components/PinLock.js',
+  '/src/components/PinRestoreModal.js',
+  '/src/components/SecuritySetup.js',
   '/src/components/Chatbot.js',
   '/src/components/GoalCard.js',
   '/src/components/AccountModal.js',
@@ -25,6 +27,9 @@ const ASSETS = [
   '/src/pages/Support.js',
   '/src/pages/Admin.js',
   '/src/utils/wealthEngine.js',
+  '/src/utils/crypto.js',
+  '/src/utils/walletAuth.js',
+  '/src/utils/totp.js',
   '/src/utils/export.js',
   '/src/utils/prices.js',
 ];
