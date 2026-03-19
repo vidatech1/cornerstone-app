@@ -81,26 +81,46 @@ ${strategies?.length ? `<h2>Active Strategies</h2><ul>${strategies.map(s => `<li
   setTimeout(() => win.print(), 600);
 };
 
-window.createBackup = async function (folderHandle) {
+window.createBackup = async function (folderHandle, pin) {
   const data     = await DB.exportAll();
   const payload  = { _type: 'wealthscore_backup', _version: '2.0', _date: new Date().toISOString(), ...data };
-  const json     = JSON.stringify(payload, null, 2);
   const d = new Date();
   const dateStamp = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-  const filename = `${dateStamp}-cornerstone.wealthscore`;
+
+  let json, filename, encrypted = false;
+
+  if (pin && window.CornerstoneEncryption) {
+    try {
+      const envelope = await CornerstoneEncryption.encrypt(payload, pin);
+      json      = JSON.stringify(envelope, null, 2);
+      filename  = `${dateStamp}-cornerstone-secure.json`;
+      encrypted = true;
+    } catch (err) {
+      // S03: encryption failed — warn user explicitly, do NOT silently downgrade
+      console.error('[Backup] Encryption failed:', err.message);
+      showToast('⚠️ Encryption failed — backup saved without encryption. Set your PIN in Settings.', 'warning', 5000);
+      json     = JSON.stringify(payload, null, 2);
+      filename = `${dateStamp}-cornerstone.json`;
+    }
+  } else {
+    // S03: no PIN set — inform user backup is unencrypted
+    if (window.CornerstoneEncryption) {
+      showToast('💡 Backup saved unencrypted. Set a PIN in Settings to secure future backups.', 'warning', 4000);
+    }
+    json     = JSON.stringify(payload, null, 2);
+    filename = `${dateStamp}-cornerstone.json`;
+  }
 
   if (folderHandle) {
-    // Save silently to chosen folder — no save dialog
     await saveToFolder(folderHandle, filename, json);
-    return { method: 'folder', folderName: folderHandle.name, filename };
+    return { method: 'folder', folderName: folderHandle.name, filename, encrypted };
   } else {
-    // Classic browser download fallback
     const blob = new Blob([json], { type: 'application/json' });
     const url  = URL.createObjectURL(blob);
     const a    = document.createElement('a');
     a.href = url; a.download = filename; a.click();
     URL.revokeObjectURL(url);
-    return { method: 'download', filename };
+    return { method: 'download', filename, encrypted };
   }
 };
 
@@ -163,12 +183,15 @@ window.backupUrgency = function (isoString, freq) {
 // Full backup + record timestamp + optional silent toast
 window.runBackup = async function (silent = false) {
   const handle = await getBackupFolder();
-  const result = await createBackup(handle);
+  // Pass PIN for encryption if available — user never sees a password prompt
+  const pin    = CornerstoneEncryption.getStoredPin();
+  const result = await createBackup(handle, pin);
   const ts     = await recordBackup();
   const folderName = (handle && handle.name) || (await DB.getSetting('backupFolderName')) || 'Downloads';
+  const encNote = result.encrypted ? ' 🔒 Encrypted' : '';
   const msg = result.method === 'folder'
-    ? `Backed up to ${folderName}`
-    : 'Backup saved — move to iCloud or Google Drive for cloud safety';
+    ? `Backed up to ${folderName}${encNote}`
+    : `Backup saved${encNote} — move to iCloud or Google Drive for safety`;
   showToast(msg, 'success', 3200);
   return ts;
 };
@@ -239,19 +262,64 @@ window.restoreFromFile = async function (file, onSuccess, onError) {
 // the onChange handler (while browser permission is guaranteed active).
 // Receiving a plain JS object instead of a file handle eliminates the
 // "permission lost after reference acquired" error on restore.
-window.restoreFromParsed = async function(data, onSuccess, onError) {
+window.restoreFromParsed = async function(data, onSuccess, onError, onNeedPin, _depth = 0) {
+  // S04: recursion depth guard — prevent unbounded recursion on malformed files
+  if (_depth > 1) {
+    return onError('Could not restore: backup format is invalid (nested encryption detected).');
+  }
+
   try {
     if (!data || typeof data !== 'object') {
       return onError('Could not restore: the backup file is empty or invalid.');
     }
 
-    // Support both envelope formats:
-    //   { accounts, settings, ... }        ← standard
-    //   { data: { accounts, settings } }   ← legacy wrapped
+    // ── Encrypted backup path ─────────────────────────────────────────────
+    if (CornerstoneEncryption.isEncrypted(data)) {
+      const storedPin = CornerstoneEncryption.getStoredPin();
+
+      const attemptDecrypt = async (pin, onPinError) => {
+        try {
+          const decrypted = await CornerstoneEncryption.decrypt(data, pin);
+          // S04: pass _depth + 1 to prevent infinite recursion
+          return restoreFromParsed(decrypted, onSuccess, onError, onNeedPin, _depth + 1);
+        } catch (err) {
+          if (err.message === 'WRONG_PIN') {
+            // R02: surface error to the caller without closing the modal
+            onPinError('Incorrect PIN — please try again.');
+          } else {
+            onError('Could not decrypt backup: ' + err.message);
+          }
+        }
+      };
+
+      if (storedPin) {
+        try {
+          const decrypted = await CornerstoneEncryption.decrypt(data, storedPin);
+          return restoreFromParsed(decrypted, onSuccess, onError, onNeedPin, _depth + 1);
+        } catch (err) {
+          if (err.message === 'WRONG_PIN') {
+            // Stored PIN doesn't match — ask user to enter PIN manually
+            // R02: onNeedPin receives attemptDecrypt so the modal can retry inline
+            if (typeof onNeedPin === 'function') {
+              return onNeedPin(attemptDecrypt);
+            }
+            return onError('Incorrect PIN. This backup was secured with a different PIN.');
+          }
+          return onError('Could not decrypt backup: ' + err.message);
+        }
+      } else {
+        if (typeof onNeedPin === 'function') {
+          return onNeedPin(attemptDecrypt);
+        }
+        return onError('This backup is encrypted. Set up your PIN in Settings to restore it.');
+      }
+    }
+
+    // ── Unencrypted backup path ───────────────────────────────────────────
     const payload = (data.accounts || data.settings) ? data : (data.data || null);
 
     if (!payload) {
-      return onError('Could not restore: unrecognized backup format. Make sure you are selecting a .wealthscore file created by Cornerstone.');
+      return onError('Could not restore: unrecognized backup format. Make sure you are selecting a Cornerstone backup file (.json or .wealthscore).');
     }
 
     const { accounts = [], settings = {}, weeklySnaps = [] } = payload;
@@ -264,7 +332,7 @@ window.restoreFromParsed = async function(data, onSuccess, onError) {
 
     if (settings && typeof settings === 'object') {
       for (const [key, value] of Object.entries(settings)) {
-        if (key === 'ws_pin' || key === 'pin') continue; // PIN stays device-local
+        if (key === 'ws_pin' || key === 'pin') continue;
         await DB.setSetting(key, value);
       }
     }

@@ -8,6 +8,7 @@ window.Dashboard = function ({ profile, accounts, income, goals, setGoals, strat
   const [showPicker, setShowPicker]   = useState(false);
   const [showExport, setShowExport]   = useState(false);
   const [restoreErr, setRestoreErr]   = useState('');
+  const [pinPrompt,  setPinPrompt]    = useState(null); // { onSubmit } | null
   const [goalModal, setGoalModal]     = useState(null);
   const [editStrat, setEditStrat]     = useState(null);
   const [newStrat, setNewStrat]       = useState('');
@@ -300,22 +301,23 @@ window.Dashboard = function ({ profile, accounts, income, goals, setGoals, strat
                     '💡 After downloading, move the file to your iCloud Drive or Google Drive for cloud safety.'
                   ),
                 ),
-                React.createElement('input', { ref: fileRef, type: 'file', accept: '.wealthscore,.json', style: { display: 'none' },
+                React.createElement('input', { ref: fileRef, type: 'file', accept: '.wealthscore,.json,application/json,text/plain', style: { display: 'none' },
                   onChange: async e => {
                     const f = e.target.files?.[0];
                     e.target.value = '';
                     if (!f) return;
                     setRestoreErr('');
-                    // Read the file immediately while the user-gesture permission is still active.
-                    // Uses FileReader fallback for iOS Safari compatibility — f.text() is not
-                    // supported on iOS Safari 14 and below and throws silently on mobile.
+                    setPinPrompt(null);
+                    // S05: reject files over 5MB — legitimate backups are ~8KB
+                    if (f.size > 5 * 1024 * 1024) {
+                      setRestoreErr('File is too large to be a valid Cornerstone backup. Please select a .json backup file.');
+                      return;
+                    }
                     try {
                       let text;
                       if (typeof f.text === 'function') {
-                        // Modern browsers (desktop Chrome, Firefox, Safari 15+)
                         text = await f.text();
                       } else {
-                        // iOS Safari fallback — wrap FileReader in a Promise
                         text = await new Promise((resolve, reject) => {
                           const reader = new FileReader();
                           reader.onload = ev => resolve(ev.target.result);
@@ -326,9 +328,14 @@ window.Dashboard = function ({ profile, accounts, income, goals, setGoals, strat
                       let data;
                       try { data = JSON.parse(text); }
                       catch { setRestoreErr('Could not restore: the file appears to be corrupted or is not a valid Cornerstone backup.'); return; }
-                      restoreFromParsed(data, () => window.location.reload(), msg => setRestoreErr(msg));
+                      restoreFromParsed(
+                        data,
+                        () => window.location.reload(),
+                        msg => setRestoreErr(msg),
+                        (onSubmit) => setPinPrompt({ onSubmit }),
+                      );
                     } catch (err) {
-                      setRestoreErr('Could not restore: unable to read the file on this device. Please try again or use a desktop browser.');
+                      setRestoreErr('Could not restore: unable to read the file on this device. Please try again.');
                     }
                   }
                 }),
@@ -497,6 +504,17 @@ window.Dashboard = function ({ profile, accounts, income, goals, setGoals, strat
       accounts, 
       T, 
       F 
+    }),
+
+    // ── PIN prompt modal for encrypted backup restore ──────────────────────
+    pinPrompt && React.createElement(PinRestoreModal, {
+      key: 'pin-restore',
+      T, F,
+      onSubmit: async (pin, onPinError) => {
+        // R02/R03: pass onPinError so modal stays open on wrong PIN
+        await pinPrompt.onSubmit(pin, onPinError);
+      },
+      onCancel: () => { setPinPrompt(null); setRestoreErr('Restore cancelled.'); },
     }),
   );
 };

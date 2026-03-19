@@ -27,64 +27,105 @@ window.Onboarding = function ({ onComplete }) {
   // Handle restore from backup file
   const [restoreStatus, setRestoreStatus] = useState(''); // Progress messages
   
+  const [pinPrompt,    setPinPrompt]    = useState(null); // { onSubmit } | null
+
   const handleRestoreClick = () => {
     setRestoreError('');
     setRestoreStatus('');
     if (fileInputRef.current) fileInputRef.current.click();
   };
 
-  const handleFileSelect = (e) => {
+  const handleFileSelect = async (e) => {
     const file = e.target.files?.[0];
+    e.target.value = '';
     if (!file) return;
-    
+
+    // S05: reject files over 5MB before parsing — legitimate backups are ~8KB
+    if (file.size > 5 * 1024 * 1024) {
+      setRestoreError('File is too large to be a valid Cornerstone backup. Please select your .json backup file.');
+      return;
+    }
+
     setRestoring(true);
     setRestoreError('');
     setRestoreStatus('Reading backup file...');
-    
-    // Timeout protection - if restore takes more than 10 seconds, something is wrong
+
+    // R01: timeout is a safety net — cleared immediately when doRestore begins
+    // to prevent it firing mid-restore on slow devices
+    let timeoutFired = false;
     const timeout = setTimeout(() => {
+      timeoutFired = true;
       setRestoring(false);
       setRestoreStatus('');
       setRestoreError('Restore timed out. Please try again or check the file.');
-    }, 10000);
-    
-    restoreFromFile(
-      file,
-      async () => {
+    }, 15000);
+
+    try {
+      let text;
+      if (typeof file.text === 'function') {
+        text = await file.text();
+      } else {
+        text = await new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = ev => resolve(ev.target.result);
+          reader.onerror = () => reject(new Error('FileReader failed'));
+          reader.readAsText(file);
+        });
+      }
+
+      let data;
+      try { data = JSON.parse(text); }
+      catch {
         clearTimeout(timeout);
+        setRestoring(false);
+        setRestoreStatus('');
+        setRestoreError('Could not restore: the file appears to be corrupted or is not a valid Cornerstone backup.');
+        return;
+      }
+
+      setRestoreStatus('Decrypting and restoring...');
+
+      // R01: doRestore clears timeout FIRST before any async DB operations
+      const doRestore = async () => {
+        clearTimeout(timeout); // R01: prevents timeout firing mid-restore
+        if (timeoutFired) return; // already timed out — abort silently
         setRestoreStatus('Restoring accounts...');
-        
-        // Small delay to show progress
-        await new Promise(r => setTimeout(r, 300));
-        setRestoreStatus('Loading profile...');
-        
-        // Load restored data
         const [prof, inc, accts] = await Promise.all([
           DB.getSetting('profile'),
           DB.getSetting('income'),
           DB.getAccounts(),
         ]);
-        
-        await new Promise(r => setTimeout(r, 200));
         setRestoreStatus('Complete!');
-        
         await new Promise(r => setTimeout(r, 400));
         setRestoring(false);
         setRestoreStatus('');
         if (window.playSuccess) window.playSuccess();
         showToast('Data restored successfully!', 'success');
         onComplete(prof || {}, inc || { job: 0, business: 0, dividends: 0 }, accts || []);
-      },
-      (errorMsg) => {
-        clearTimeout(timeout);
-        setRestoring(false);
-        setRestoreStatus('');
-        setRestoreError(errorMsg);
-      }
-    );
-    
-    // Reset file input so same file can be selected again
-    e.target.value = '';
+      };
+
+      restoreFromParsed(
+        data,
+        doRestore,
+        (errorMsg) => {
+          clearTimeout(timeout);
+          setRestoring(false);
+          setRestoreStatus('');
+          setRestoreError(errorMsg);
+        },
+        (onSubmit) => {
+          clearTimeout(timeout);
+          setRestoring(false);
+          setRestoreStatus('');
+          setPinPrompt({ onSubmit });
+        },
+      );
+    } catch (err) {
+      clearTimeout(timeout);
+      setRestoring(false);
+      setRestoreStatus('');
+      setRestoreError('Could not restore: unable to read the file on this device. Please try again.');
+    }
   };
 
   const addAccount = () => {
@@ -143,9 +184,23 @@ window.Onboarding = function ({ onComplete }) {
     React.createElement('input', {
       ref: fileInputRef,
       type: 'file',
-      accept: '.wealthscore,.json',
+      accept: '.wealthscore,.json,application/json,text/plain',
       style: { display: 'none' },
       onChange: handleFileSelect,
+    }),
+
+    // PIN entry modal for encrypted backup restore
+    pinPrompt && React.createElement(PinRestoreModal, {
+      T, F,
+      onSubmit: async (pin, onPinError) => {
+        // R02: pass onPinError so modal stays open and shows error inline on wrong PIN
+        setRestoring(true);
+        setRestoreStatus('Decrypting backup...');
+        await pinPrompt.onSubmit(pin, onPinError);
+        setRestoring(false);
+        setRestoreStatus('');
+      },
+      onCancel: () => { setPinPrompt(null); setRestoreError('Restore cancelled.'); },
     }),
     
     React.createElement('div', { className: 'fade-up', style: { background: T.surface, border: `1px solid ${T.border}`, borderRadius: 22, padding: 34, width: '100%', maxWidth: 540 } },
@@ -222,7 +277,7 @@ window.Onboarding = function ({ onComplete }) {
         
         // Helper text
         React.createElement('p', { style: { fontFamily: "'Inter', sans-serif", fontSize: F.xs, color: T.textMuted, marginTop: 16, lineHeight: 1.6 } },
-          'Lost your data or switching devices? Choose "Restore from Backup" to recover your accounts, goals, and settings from a .wealthscore file.'
+          'Switching devices or restoring your data? Tap "Restore from Backup" and select your Cornerstone backup file (.json) from iCloud Drive or your Downloads folder.'
         ),
         
         // Error message
@@ -427,6 +482,16 @@ window.Onboarding = function ({ onComplete }) {
           React.createElement('span', { style: { fontFamily: "'Inter', sans-serif", fontSize: F.xs, color: T.textSub, lineHeight: 1.6 } },
             React.createElement('strong', { style: { color: T.text } }, 'Pro tip: '),
             'Choose a folder inside iCloud Drive, Google Drive, or Dropbox and every backup goes to the cloud automatically — no extra steps, and the data is yours.',
+          ),
+        ),
+
+        // iCloud sync guidance for mobile users
+        React.createElement('div', { style: { background: T.surfaceAlt, border: `1px solid ${T.border}`, borderRadius: 14, padding: '14px 16px', marginBottom: 16 } },
+          React.createElement('div', { style: { fontFamily: "'Playfair Display', serif", fontWeight: 600, fontSize: F.sm, color: T.accent, marginBottom: 6 } }, '☁️ Sync Between iPhone & Mac'),
+          React.createElement('div', { style: { fontFamily: "'Inter', sans-serif", fontSize: F.xs, color: T.textSub, lineHeight: 1.7 } },
+            'Choose a folder inside ',
+            React.createElement('strong', { style: { color: T.text } }, 'iCloud Drive'),
+            ' and your encrypted backup syncs automatically to all your Apple devices. On iPhone, tap Backup Now → save the file to iCloud Drive → your Mac will see it instantly.',
           ),
         ),
 
