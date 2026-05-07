@@ -1,4 +1,4 @@
-const CACHE = 'cornerstone-0.15';
+const CACHE = 'cornerstone-0.16';
 const ASSETS = [
   '/', '/index.html',
   '/src/app.js',
@@ -26,12 +26,14 @@ const ASSETS = [
   '/src/pages/Lifestyle.js',
   '/src/pages/Support.js',
   '/src/pages/Admin.js',
+  '/src/pages/Transactions.js',
   '/src/utils/wealthEngine.js',
   '/src/utils/crypto.js',
   '/src/utils/walletAuth.js',
   '/src/utils/totp.js',
   '/src/utils/export.js',
   '/src/utils/prices.js',
+  '/src/utils/csvParser.js',
 ];
 
 self.addEventListener('install', e => {

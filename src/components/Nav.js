@@ -3,11 +3,12 @@ window.Nav = function ({ page, setPage, themeMode, setTheme, fontSize, setFontSi
   const { T, F } = React.useContext(AppCtx);
   
   const tabs = [
-    { id: 0, label: 'Home', icon: '◉' },
-    { id: 1, label: 'Holdings', icon: '◎' },
-    { id: 2, label: 'Forecast', icon: '◈' },
-    { id: 3, label: 'Journey', icon: '◇' },
-    { id: 5, label: 'Report', icon: '▣' },
+    { id: 0,  label: 'Home',    icon: '◉' },
+    { id: 1,  label: 'Holdings',icon: '◎' },
+    { id: 10, label: 'Txns',    icon: '⇅' },
+    { id: 2,  label: 'Forecast',icon: '◈' },
+    { id: 3,  label: 'Journey', icon: '◇' },
+    { id: 5,  label: 'Report',  icon: '▣' },
   ];
 
   // Logo SVG component

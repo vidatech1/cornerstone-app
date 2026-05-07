@@ -2,7 +2,7 @@
 const { useState, useEffect, useCallback, useContext } = React;
 
 // App version (alpha stage)
-window.APP_VERSION = '0.15';
+window.APP_VERSION = '0.16';
 
 // Default seed data for first-time users who skip onboarding
 const DEFAULT_STRATEGIES = [
@@ -183,20 +183,21 @@ function App() {
 
   // ── Main app ──────────────────────────────────────────────────────────────
   // PAGE INDEX MAP — must stay in sync with Nav.js exactly:
-  // Tab nav:    0=Home  1=Holdings  2=Forecast  3=Journey  (4=unused)  5=Report
+  // Tab nav:    0=Home  1=Holdings  10=Txns  2=Forecast  3=Journey  5=Report
   // Header nav: 6=Settings  7=Lifestyle  8=Support
   // Hidden:     9=Recommendations (reachable from Journey results)
   const pages = [
-    React.createElement(Dashboard,           { key: 0, profile, accounts: liveAccounts, income, goals, setGoals, strategies, setStrategies, setPage, isOnline, liveValues, pricesLoading }),
-    React.createElement(AccountsPage,        { key: 1, accounts, setAccounts, liveValues, pricesLoading, onRefreshPrices: () => refreshPrices(accounts) }),
-    React.createElement(ProjectionsPage,     { key: 2, accounts: liveAccounts, income, profile }),
-    React.createElement(LifeScorePage,       { key: 3, accounts: liveAccounts, income, profile, onViewRecommendations: () => setPage(9) }),
-    null, // index 4 — unused (Nav jumps from 3 to 5)
-    React.createElement(WeeklyReportPage,    { key: 5, accounts: liveAccounts, income, liveValues, isOnline }),
-    React.createElement(SettingsPage,        { key: 6, profile, onUpdateProfile: setProfile, onOpenAdmin: () => setShowAdmin(true) }),
-    React.createElement(LifestylePage,       { key: 7, profile, onUpdateProfile: setProfile }),
-    React.createElement(SupportPage,         { key: 8, profile }),
-    React.createElement(RecommendationsPage, { key: 9, accounts: liveAccounts, income, strategies, setStrategies }),
+    React.createElement(Dashboard,           { key: 0,  profile, accounts: liveAccounts, income, goals, setGoals, strategies, setStrategies, setPage, isOnline, liveValues, pricesLoading }),
+    React.createElement(AccountsPage,        { key: 1,  accounts, setAccounts, liveValues, pricesLoading, onRefreshPrices: () => refreshPrices(accounts) }),
+    React.createElement(ProjectionsPage,     { key: 2,  accounts: liveAccounts, income, profile }),
+    React.createElement(LifeScorePage,       { key: 3,  accounts: liveAccounts, income, profile, onViewRecommendations: () => setPage(9) }),
+    null, // index 4 — unused
+    React.createElement(WeeklyReportPage,    { key: 5,  accounts: liveAccounts, income, liveValues, isOnline }),
+    React.createElement(SettingsPage,        { key: 6,  profile, onUpdateProfile: setProfile, onOpenAdmin: () => setShowAdmin(true) }),
+    React.createElement(LifestylePage,       { key: 7,  profile, onUpdateProfile: setProfile }),
+    React.createElement(SupportPage,         { key: 8,  profile }),
+    React.createElement(RecommendationsPage, { key: 9,  accounts: liveAccounts, income, strategies, setStrategies }),
+    React.createElement(TransactionsPage,    { key: 10, accounts, setAccounts }),
   ];
 
   return React.createElement(AppCtx.Provider, { value: ctx },

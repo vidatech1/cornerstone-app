@@ -3,7 +3,7 @@
 
 (function () {
   const DB_NAME = 'WealthScoreDB';
-  const DB_VER  = 2; // bumped for weeklySnaps store
+  const DB_VER  = 3; // bumped for transactions store
 
   let _db = null;
 
@@ -19,7 +19,8 @@
         if (!db.objectStoreNames.contains('goals'))        db.createObjectStore('goals',        { keyPath: 'id' });
         if (!db.objectStoreNames.contains('strategies'))   db.createObjectStore('strategies',   { keyPath: 'id' });
         if (!db.objectStoreNames.contains('lifeHistory'))  db.createObjectStore('lifeHistory',  { keyPath: 'id' });
-        if (!db.objectStoreNames.contains('weeklySnaps'))  db.createObjectStore('weeklySnaps',  { keyPath: 'id' });
+        if (!db.objectStoreNames.contains('weeklySnaps'))    db.createObjectStore('weeklySnaps',    { keyPath: 'id' });
+        if (!db.objectStoreNames.contains('transactions'))   db.createObjectStore('transactions',   { keyPath: 'id' });
       };
       req.onsuccess = e => { _db = e.target.result; resolve(_db); };
       req.onerror   = e => reject(e.target.error);
@@ -104,6 +105,12 @@
     saveWeeklySnap:  snap   => set('weeklySnaps', null, snap),
     clearWeeklySnaps:()     => clearStore('weeklySnaps'),
 
+    // Transactions
+    getTransactions:   ()    => getAll('transactions'),
+    saveTransaction:   txn   => set('transactions', null, txn),
+    deleteTransaction: id    => remove('transactions', id),
+    clearTransactions: ()    => clearStore('transactions'),
+
     // Life Score history
     getLifeHistory:()        => getAll('lifeHistory'),
     saveLifeEntry: entry     => set('lifeHistory', null, entry),
@@ -116,18 +123,20 @@
       await clearStore('strategies');
       await clearStore('lifeHistory');
       await clearStore('weeklySnaps');
+      await clearStore('transactions');
       if (data.profile)    await set('settings', 'profile', data.profile);
       if (data.income)     await set('settings', 'income',  data.income);
       await set('settings', 'onboarded', true); // Mark as onboarded after restore!
       for (const a of (data.accounts   || [])) await set('accounts',    null, a);
       for (const g of (data.goals      || [])) await set('goals',       null, g);
       for (const s of (data.strategies || [])) await set('strategies',  null, s);
-      for (const w of (data.weeklySnaps|| [])) await set('weeklySnaps', null, w);
+      for (const w of (data.weeklySnaps   || [])) await set('weeklySnaps',   null, w);
+      for (const t of (data.transactions  || [])) await set('transactions',  null, t);
     },
 
     // Full export snapshot
     async exportAll() {
-      const [profile, income, accounts, goals, strategies, lifeHistory, weeklySnaps] = await Promise.all([
+      const [profile, income, accounts, goals, strategies, lifeHistory, weeklySnaps, transactions] = await Promise.all([
         get('settings', 'profile'),
         get('settings', 'income'),
         getAll('accounts'),
@@ -135,8 +144,9 @@
         getAll('strategies'),
         getAll('lifeHistory'),
         getAll('weeklySnaps'),
+        getAll('transactions'),
       ]);
-      return { profile, income, accounts, goals, strategies, lifeHistory, weeklySnaps };
+      return { profile, income, accounts, goals, strategies, lifeHistory, weeklySnaps, transactions };
     },
   };
 })();
